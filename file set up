@@ -1,0 +1,62 @@
+# Libraries
+library(tidyverse)
+library(fpp3)
+library(nortest)
+rm(list=ls())
+
+
+# Global variables
+month_colors = c("black", "blue", "purple", "red", "orange",
+                 "darkred", "green", "chartreuse4", "chocolate", 
+                 "gray60", "gold4", "salmon")
+
+
+# Read data
+File <- "LNU03000000.csv"
+Unemployment_table <- read.csv(File, col.names = c("Month", "UE_amount"))
+
+# Convert string to date
+Unemployment_table$Month <- as.Date(Unemployment_table$Month, "%Y-%m-%d")
+
+
+# Filter
+Unemployment_table_recent <- Unemployment_table %>% 
+  filter(
+    Month >= "2000-01-01", 
+    Month <= "2025-03-01"
+  )
+head(Unemployment_table_recent)
+
+# create tsibble
+Unemployment_table_ts <- tsibble(
+  Month_index = yearmonth(seq(as.Date("2000-01-01"),
+                              as.Date("2025-03-01"),
+                              by = "1 month")), 
+  UE_amount = Unemployment_table_recent$UE_amount,
+  Time = seq(1:nrow(Unemployment_table_recent)),
+  index = Month_index)
+
+# add month number
+Unemployment_table_ts <- Unemployment_table_ts %>% 
+  mutate(
+    Month_num = month(Month_index)
+  )
+
+# add factor
+Unemployment_table_ts$Month_factor <- as.factor(Unemployment_table_ts$Month_num)
+
+# plot UE_amount
+Unemployment_table_ts %>% autoplot(UE_amount) + 
+  geom_point(aes(y=UE_amount, color=Month_factor)) + 
+  scale_color_manual(values = month_colors) + 
+  theme_classic() + 
+  ggtitle("Unemployment Amount vs. Time") +
+  xlab("Time") + ylab("Unemployment Amount")
+
+#plot log(UE_amount)
+unemployment_table_ts <- Unemployment_table_ts %>% mutate(LogUE_amount = log(UE_amount))
+unemployment_table_ts %>% autoplot(LogUE_amount) +
+  geom_point(aes(y=LogUE_amount, color=Month_factor)) +
+  scale_color_manual(values = month_colors) +
+  theme_classic() +
+  ggtitle("Log(UE_amount) vs. Time") + xlab("Time") + ylab("Log(UE_amount)")
