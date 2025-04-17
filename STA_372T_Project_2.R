@@ -201,7 +201,7 @@ Unemployment_table3_ts$Log_LNU03000000 <- log(Unemployment_table3_ts$LNU03000000
 
 forecast_result_dcmp_ARIMA_SARIMA %>% autoplot(Unemployment_table3_ts) +
   geom_line(aes(y = c(result_dcmp_ARIMA_SARIMA_augment$.fitted, forecasts, result_ARIMA_LogA_augment$.fitted[149:182])), color = "red", lty = 2) +
-  ggtitle("Revenue (Black represents Log(Unemployment); Red represents in-sample forecasts)") +
+  ggtitle("Unemployment (Black shows Log(Unemployment); Red shows forecasts)") +
   xlab("Time") + ylab("Log(Unemployment") +
   theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
         panel.background = element_blank(), axis.line = element_line(colour = "black"))
