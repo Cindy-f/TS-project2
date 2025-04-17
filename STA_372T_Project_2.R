@@ -14,7 +14,7 @@ Unemployment_table_ts <- Unemployment_table %>%
   as_tsibble(index=month)
 
 
-# Graph before making an changes
+# Graph before making any changes
 Month_colors <- c("black", "blue", "purple", "red", "orange", "darkred", "green",
                   "chartreuse4", "chocolate", "gray60", "gold4", "salmon")
 
@@ -35,7 +35,6 @@ Unemployment_table_ts %>% autoplot(Log_LNU03000000) + geom_point(aes(y=Log_LNU03
   scale_color_manual(values = Month_colors) + theme_classic() + ggtitle("Log(Unemployment Levels) vs. Month") + 
   xlab("Months") + ylab("Log(Unemployment Levels in Thousands of People)") + 
   geom_hline(aes(yintercept = mean(Log_LNU03000000)), lty=2)
-
 
 
 # Removing the Pandemic Period
@@ -91,6 +90,7 @@ report(Unemployment_ARIMA_LogA)
 # Checking Normality of the Residuals
 
 result_ARIMA_LogA_augment <- augment(Unemployment_ARIMA_LogA)
+result_ARIMA_LogA_augment$.fitted
 ad.test(result_ARIMA_LogA_augment$.resid)
 
 result_ARIMA_LogA_augment$.fitted
@@ -152,4 +152,57 @@ PI_low_Unemployment <- exp(PI_low_LogUnemployment)
 PI_low_Unemployment
 PI_up_Unemployment <- exp(PI_up_LogUnemployment)
 PI_up_Unemployment
+
+
+
+
+
+
+# Forecasting during the Pandemic
+
+# Creating table up until the pandemic period begins
+Unemployment_table2 <- read_csv(file)
+Unemployment_table2 <- Unemployment_table2[745:866,]
+
+Unemployment_table2_ts <- Unemployment_table2 %>%
+  add_column(month=yearmonth("2010 January") + 0:121, .before=TRUE) %>%
+  as_tsibble(index=month)
+
+Unemployment_table2_ts$Log_LNU03000000 <- log(Unemployment_table2_ts$LNU03000000)
+
+# Determining the best model
+result_dcmp_ARIMA_SARIMA <- Unemployment_table2_ts %>%
+  model(decomposition_model(
+    STL(Log_LNU03000000),
+    ARIMA(season_adjust ~ 1 + pdq(1,1,1) + PDQ(0,0,0)),
+    ARIMA(season_year ~ 0 + pdq(0,0,0) + PDQ(0,1,0))))
+
+report(result_dcmp_ARIMA_SARIMA)
+result_dcmp_ARIMA_SARIMA_augment <- augment(result_dcmp_ARIMA_SARIMA)
+
+# Computing the forecasts during the pandemic
+forecast_result_dcmp_ARIMA_SARIMA <- result_dcmp_ARIMA_SARIMA %>%
+  forecast(h=26, point_forecast=list(.median=median))
+forecast_result_dcmp_ARIMA_SARIMA %>% hilo(95) %>% select(-.model) %>% print(n = 26, width = Inf)
+forecasts <- forecast_result_dcmp_ARIMA_SARIMA$.median
+forecasts
+
+# Graphing forecasted pandemic vs. actual
+
+Unemployment_table3 <- read_csv(file)
+Unemployment_table3 <- Unemployment_table3[745:926,]
+
+Unemployment_table3_ts <- Unemployment_table3 %>%
+  add_column(month=yearmonth("2010 January") + 0:181, .before=TRUE) %>%
+  as_tsibble(index=month)
+
+Unemployment_table2_ts$Log_LNU03000000 <- log(Unemployment_table2_ts$LNU03000000)
+Unemployment_table3_ts$Log_LNU03000000 <- log(Unemployment_table3_ts$LNU03000000)
+
+forecast_result_dcmp_ARIMA_SARIMA %>% autoplot(Unemployment_table3_ts) +
+  geom_line(aes(y = c(result_dcmp_ARIMA_SARIMA_augment$.fitted, forecasts, result_ARIMA_LogA_augment$.fitted[149:182])), color = "red", lty = 2) +
+  ggtitle("Revenue (Black represents Log(Unemployment); Red represents in-sample forecasts)") +
+  xlab("Time") + ylab("Log(Unemployment") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+        panel.background = element_blank(), axis.line = element_line(colour = "black"))
 
