@@ -1,0 +1,192 @@
+---
+title: "STA 372T Group Project 2"
+author: "Rachel Nguyen"
+date: "2025-04-14"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Library
+
+```{r}
+# Libraries
+library(tidyverse)
+library(fpp3)
+library(nortest)
+rm(list=ls())
+
+
+# Global variables
+month_colors = c("black", "blue", "purple", "red", "orange",
+                 "darkred", "green", "chartreuse4", "chocolate", 
+                 "gray60", "gold4", "salmon")
+
+
+# Read data
+File <- "LNU03000000.csv"
+Unemployment_table <- read.csv(File, col.names = c("Month", "UE_amount"))
+
+# Convert string to date
+Unemployment_table$Month <- as.Date(Unemployment_table$Month, "%Y-%m-%d")
+
+
+# Filter
+Unemployment_table_recent <- Unemployment_table %>% 
+  filter(
+    Month >= "2010-01-01", 
+    Month <= "2025-02-01"
+  )
+head(Unemployment_table_recent)
+```
+
+## tsibble set up
+
+```{r}
+# create tsibble
+Unemployment_table_ts <- tsibble(
+  Month_index = yearmonth(seq(as.Date("2010-01-01"),
+                              as.Date("2025-02-01"),
+                              by = "1 month")), 
+  UE_amount = Unemployment_table_recent$UE_amount,
+  Time = seq(1:nrow(Unemployment_table_recent)),
+  index = Month_index)
+
+# add month number
+Unemployment_table_ts <- Unemployment_table_ts %>% 
+  mutate(
+    Month_num = month(Month_index)
+  )
+
+# add factor
+Unemployment_table_ts$Month_factor <- as.factor(Unemployment_table_ts$Month_num)
+```
+
+```{r}
+# plot UE_amount
+Unemployment_table_ts %>% autoplot(UE_amount) + 
+  geom_point(aes(y=UE_amount, color=Month_factor)) + 
+  scale_color_manual(values = month_colors) + 
+  theme_classic() + 
+  ggtitle("Unemployment Amount vs. Time") +
+  xlab("Time") + ylab("Unemployment Amount")
+```
+
+```{r}
+#plot log(UE_amount)
+unemployment_table_ts <- Unemployment_table_ts %>% mutate(LogUE_amount = log(UE_amount))
+unemployment_table_ts %>% autoplot(LogUE_amount) +
+  geom_point(aes(y=LogUE_amount, color=Month_factor)) +
+  scale_color_manual(values = month_colors) +
+  theme_classic() +
+  ggtitle("Log(UE_amount) vs. Time") + xlab("Time") + ylab("Log(UE_amount)")
+```
+
+
+```{r}
+#
+#   Assign NA values to Sales and log(Sales) and log(A) for the intervention period 
+#
+unemployment_table_ts$UE_amount[123:148] <- NA
+unemployment_table_ts$LogUE_amount[123:148] <- NA
+#
+#   Print data around intervention period
+#
+print(unemployment_table_ts[120:151,], n=32)
+#
+#   Plot Sales against Time with observations removed
+#
+unemployment_table_ts %>% autoplot(UE_amount) +
+  geom_point(aes(y=UE_amount, color=Month_factor)) +
+  scale_color_manual(values = month_colors) +
+  theme_classic() +
+  ggtitle("Unemployment Amount vs. Time with observations removed") + xlab("Time") + ylab("Unemployment")
+#
+#   Plot log(Sales) against Time with observations removed
+#
+unemployment_table_ts %>% autoplot(LogUE_amount) +
+  geom_point(aes(y=LogUE_amount, color=Month_factor)) +
+  scale_color_manual(values = month_colors) +
+  theme_classic() +
+  ggtitle("Log(UE_amount) vs. Time with observations removed") + xlab("Time") + ylab("Log(UE_amount)")
+```
+
+
+```{r}
+#   Seasonally adjust LogSales using stlplus to allow for missing observations
+LogUE_amount_time_series <- ts(unemployment_table_ts$LogUE_amount, frequency=12)
+components <- stlplus(LogUE_amount_time_series, s.window=11, robust=TRUE)
+unemployment_table_ts$season <- components$data$seasonal
+unemployment_table_ts$LogA <- components$data$raw - components$data$seasonal
+
+#   Print full tsibble around intervention period
+#
+print(unemployment_table_ts[120:148,], n=32)
+```
+
+
+```{r}
+unemployment_table_ts %>% autoplot(LogA) +
+  geom_point(aes(y=LogA, color=Month_factor)) +
+  scale_color_manual(values = month_colors) +
+  theme_classic() +
+  ggtitle("Log(A) vs. Time with observations removed") + xlab("Time") + ylab("Log(A)")
+```
+
+```{r}
+#   Compute autocorrelation function of LogA
+#
+unemployment_table_ts %>% ACF(LogA) %>% autoplot()
+unemployment_table_ts %>% ACF(LogUE_amount) %>% autoplot()
+unemployment_table_ts %>% ACF(UE_amount) %>% autoplot()
+
+#
+#   Compute KPSS test for nonstationary data
+#
+unitroot_kpss(unemployment_table_ts$LogA)
+unitroot_kpss(unemployment_table_ts$LogUE_amount)
+unitroot_kpss(unemployment_table_ts$UE_amount)
+```
+
+```{r}
+#   Plot diff_LogA against Time
+#
+unemployment_table_ts <- unemployment_table_ts %>% mutate(diff_LogA = difference(LogA,1))
+mean_diff_LogA <- mean(unemployment_table_ts$diff_LogA, na.rm=TRUE)
+unemployment_table_ts %>% autoplot(diff_LogA) +
+  geom_point(aes(y=diff_LogA, color=Month_factor)) +
+  geom_hline(aes(yintercept=mean_diff_LogA), lty=2) +
+  scale_color_manual(values = month_colors) +
+  theme_classic() +
+  ggtitle("diff_LogA vs. Time") + xlab("Time") + ylab("diff_LogA")
+#
+#   Compute autocorrelation function of diff_LogA
+#
+unemployment_table_ts %>% ACF(diff_LogA) %>% autoplot()
+#
+#   Compute KPSS test for nonstationary data
+#
+unitroot_kpss(unemployment_table_ts$diff_LogA)
+```
+
+
+```{r}
+#
+#   Use ARIMA to select best ARIMA(p,d,q) model for LogA
+#
+result_ARIMA_LogA <- unemployment_table_ts %>% 
+  model(ARIMA(LogA ~ PDQ(0,0,0), stepwise=FALSE, approximation=FALSE, trace=FALSE))
+report(result_ARIMA_LogA)
+#
+#   Check the assumptions
+#
+result_ARIMA_LogA %>% gg_tsresiduals()
+result_ARIMA_LogA_augment <- augment(result_ARIMA_LogA)
+ad.test(result_ARIMA_LogA_augment$.resid)
+```
+
+```{r}
+
+```
