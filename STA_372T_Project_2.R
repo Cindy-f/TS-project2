@@ -252,12 +252,13 @@ Unemployment_ARIMA_LogA <- Unemployment_table_ts %>% model(ARIMA(LogA ~ PDQ(0,0,
 report(Unemployment_ARIMA_LogA)
 
 # Checking Normality of the Residuals
-result_ARIMA_LogA_augment <- augment(Unemployment_ARIMA_LogA)
-result_ARIMA_LogA_augment$.fitted
-ad.test(result_ARIMA_LogA_augment$.resid)
+Unemployment_ARIMA_LogA_augment <- augment(Unemployment_ARIMA_LogA)
+Unemployment_ARIMA_LogA_augment$.fitted
+ad.test(Unemployment_ARIMA_LogA_augment$.resid)
+Unemployment_ARIMA_LogA_augment$.fitted
 
-result_ARIMA_LogA_augment$.fitted
-
+#Checking Assumptions
+Unemployment_ARIMA_LogA %>% gg_tsresiduals()
 
 # Forecasting the next 4 Months
 Unemployment_ARIMA_LogA_forecast <- Unemployment_ARIMA_LogA %>% forecast(h=4)
@@ -284,7 +285,6 @@ var_forecast_errors_season
 
 
 # Finding Correlation
-Unemployment_ARIMA_LogA_augment <- augment(Unemployment_ARIMA_LogA)
 Unemployment_ARIMA_season_augment <- augment(result_ARIMA_season)
 correlation <- cor(Unemployment_ARIMA_LogA_augment$.resid, Unemployment_ARIMA_season_augment$.resid, use = 'complete') 
 correlation
@@ -312,3 +312,36 @@ PI_low_Unemployment <- exp(PI_low_LogUnemployment)
 PI_low_Unemployment
 PI_up_Unemployment <- exp(PI_up_LogUnemployment)
 PI_up_Unemployment
+
+# Graphing Forecasts and Intervals
+
+Unemployment_table_ts$insample_LNU03000000 <- exp(Unemployment_ARIMA_LogA_augment$.fitted + 
+                                        Unemployment_ARIMA_season_augment$.fitted)
+
+forecast_ts <- tsibble(Month_index = yearmonth(seq(as.Date("2025-03-01"),
+                                                   as.Date("2025-06-01"),
+                                                   by = "1 month")),
+                       forecast_Enplane = forecast_Unemployment,
+                       PI_low_Unemployment = PI_low_Unemployment,
+                       PI_up_Unemployment = PI_up_Unemployment,
+                       index = Month_index)
+
+Unemployment_table_ts %>% autoplot(LNU03000000) +
+  geom_line(aes(y=insample_LNU03000000), color="red") +
+  geom_line(data = forecast_ts, aes(x=Month_index, y=forecast_Unemployment), color="blue") +
+  theme_classic() + ggtitle("Unemployment vs. Time") + xlab("Time") + ylab("Unemployment in Thousands of People")
+
+
+# Zoomed in View of Forecasts
+
+Unemployment_table_ts[255:266,] %>% autoplot(LNU03000000) +
+  geom_point(aes(y=LNU03000000)) +
+  geom_line(aes(y=insample_LNU03000000), color="red") +
+  geom_point(aes(y=insample_LNU03000000), color="red") +
+  geom_point(data = forecast_ts, aes(x=Month_index, y=forecast_Unemployment), color="blue") +
+  geom_line(data = forecast_ts, aes(x=Month_index, y=forecast_Unemployment), color="blue") +
+  geom_point(data = forecast_ts, aes(x=Month_index, y=PI_low_Unemployment), color="blue") +
+  geom_line(data = forecast_ts, aes(x=Month_index, y=PI_low_Unemployment), color="blue", lty=2) +
+  geom_point(data = forecast_ts, aes(x=Month_index, y=PI_up_Unemployment), color="blue") +
+  geom_line(data = forecast_ts, aes(x=Month_index, y=PI_up_Unemployment), color="blue", lty=2) +
+  theme_classic() + ggtitle("Unemployment vs. Time") + xlab("Time") + ylab("Unemployment in Thousands of People")
